@@ -1,9 +1,21 @@
 import { useReadContract, useWriteContract, useAccount, useChainId } from 'wagmi';
+import { createPublicClient, http } from 'viem';
+import { base } from 'viem/chains';
 import { eventNFTAbi } from '../../contract/abi';
 
 // Contract configuration
 export const CONTRACT_ADDRESS = '0xef83c6e7953d028d637e416f581ae2fa836ebae8' as const;
 export const CONTRACT_ABI = eventNFTAbi;
+
+// Public client for read operations
+export const publicClient = createPublicClient({
+  chain: base,
+  transport: http('https://base.drpc.org', { 
+    timeout: 60_000,
+    retryCount: 3,
+    retryDelay: 1000
+  })
+});
 
 // Hook for contract interactions using Wagmi
 export const useContract = () => {
@@ -13,9 +25,10 @@ export const useContract = () => {
   // Helper function to check if contract is accessible
   const verifyContract = async () => {
     try {
-      // This would need to be implemented with a custom hook or direct viem call
-      // For now, we'll assume it's accessible if we're connected to the right chain
-      return isConnected && chainId === 8453; // Base mainnet chain ID
+      const contractCode = await publicClient.getBytecode({
+        address: CONTRACT_ADDRESS
+      });
+      return contractCode && contractCode !== '0x';
     } catch (error) {
       console.error('Error verifying contract:', error);
       return false;
@@ -25,9 +38,11 @@ export const useContract = () => {
   // Helper function to get contract name for verification
   const getContractName = async () => {
     try {
-      // This would need to be implemented with useReadContract
-      // For now, return the expected name
-      return 'EthSafari Event NFTs V2';
+      return await publicClient.readContract({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: 'name'
+      });
     } catch (error) {
       console.error('Error getting contract name:', error);
       return null;
@@ -37,6 +52,7 @@ export const useContract = () => {
   return {
     contractAddress: CONTRACT_ADDRESS,
     contractAbi: CONTRACT_ABI,
+    publicClient,
     address,
     isConnected,
     chainId,

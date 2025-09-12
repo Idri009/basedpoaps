@@ -7,7 +7,7 @@ import { useReadContract, useWriteContract, useAccount } from 'wagmi';
 const MintPage = () => {
   const { eventCode } = useParams<{ eventCode: string }>();
   const navigate = useNavigate();
-  const { contractAddress, contractAbi, address, isConnected, chainId } = useContract();
+  const { contractAddress, contractAbi, isConnected, chainId } = useContract();
   const { address: account } = useAccount();
   const [isMinting, setIsMinting] = useState(false);
   const [mintStatus, setMintStatus] = useState('');
@@ -113,36 +113,24 @@ const MintPage = () => {
     setMintStatus('Preparing transaction...');
 
     try {
-      const walletClient = getWalletClient();
-      if (!walletClient) {
-        setMintStatus('Wallet client not available. Please check your wallet connection.');
-        setIsMinting(false);
-        return;
-      }
-
       const ipfsHash = 'bafkreiat5vst4hwcor3uctfre3rhie34ginwy7hvtqjubs3enjeykjinpa';
 
-      const hash = await walletClient.writeContract({
+      writeContract({
         address: contractAddress,
         abi: contractAbi,
         functionName: 'mintEventNFT',
         args: [eventCode!, ipfsHash],
-        value: parseEther(mintingFee),
-        account: account as `0x${string}`
+        value: parseEther(mintingFee)
+      }, {
+        onSuccess: () => {
+          setMintStatus('Success! Your NFT has been minted!');
+          setHasUserMinted(true);
+        },
+        onError: (error) => {
+          console.error('Error minting NFT:', error);
+          setMintStatus(`Error: ${error.message || 'Transaction failed'}`);
+        }
       });
-
-      setMintStatus('Transaction submitted! Waiting for confirmation...');
-
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      
-      if (receipt.status === 'success') {
-        setMintStatus('Success! Your NFT has been minted!');
-        setHasUserMinted(true);
-        // Refresh the total minted count
-        fetchTotalMinted();
-      } else {
-        setMintStatus('Transaction failed. Please try again.');
-      }
     } catch (error: any) {
       console.error('Error minting NFT:', error);
       setMintStatus(`Error: ${error.message || 'Transaction failed'}`);
@@ -391,44 +379,7 @@ const MintPage = () => {
                 }}>
                   Connect your wallet to mint your attendance NFT
                 </p>
-                <button
-                  onClick={connectWallet}
-                  style={{
-                    width: '100%',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    padding: '12px 24px',
-                    borderRadius: '8px',
-                    fontWeight: '500',
-                    border: '2px solid black',
-                    transition: 'all 0.1s ease',
-                    fontSize: '1rem',
-                    cursor: 'pointer',
-                    color: 'black',
-                    backgroundColor: '#60a5fa',
-                    boxShadow: '0 4px 0 0 rgba(0,0,0,1)'
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.backgroundColor = '#3b82f6';
-                    e.currentTarget.style.boxShadow = '0 6px 0 0 rgba(0,0,0,1)';
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.backgroundColor = '#60a5fa';
-                    e.currentTarget.style.boxShadow = '0 4px 0 0 rgba(0,0,0,1)';
-                  }}
-                  onMouseDown={(e) => {
-                    e.currentTarget.style.boxShadow = '0 2px 0 0 rgba(0,0,0,1)';
-                    e.currentTarget.style.transform = 'translateY(2px)';
-                  }}
-                  onMouseUp={(e) => {
-                    e.currentTarget.style.boxShadow = '0 4px 0 0 rgba(0,0,0,1)';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                  }}
-                >
-                  Connect Wallet
-                </button>
+                <appkit-button />
               </div>
             ) : (
               <div>
@@ -442,58 +393,13 @@ const MintPage = () => {
                     fontSize: '0.875rem',
                     color: '#166534'
                   }}>
-                    <strong>Connected:</strong> {account.slice(0, 6)}...{account.slice(-4)}
+                    <strong>Connected:</strong> {account ? `${account.slice(0, 6)}...${account.slice(-4)}` : 'Unknown'}
                   </p>
                 </div>
 
                 <div style={{ marginBottom: '1rem' }}>
                   <p style={{ marginBottom: '0.5rem' }}><strong>Minting Fee:</strong> {mintingFee} ETH</p>
                   <p style={{ marginBottom: '0.5rem' }}><strong>Event Code:</strong> {eventCode}</p>
-                  {!isCorrectNetwork && (
-                    <div style={{
-                      padding: '0.75rem',
-                      backgroundColor: '#fef3c7',
-                      borderRadius: '0.5rem',
-                      marginBottom: '1rem',
-                      border: '1px solid #f59e0b'
-                    }}>
-                      <p style={{
-                        color: '#92400e',
-                        fontWeight: '500',
-                        marginBottom: '0.5rem'
-                      }}>
-                        ⚠️ Wrong Network
-                      </p>
-                      <p style={{
-                        color: '#92400e',
-                        fontSize: '0.875rem',
-                        marginBottom: '0.75rem'
-                      }}>
-                        Please switch to Base network to mint NFTs.
-                      </p>
-                      <button
-                        onClick={switchToBaseNetwork}
-                        style={{
-                          backgroundColor: '#f59e0b',
-                          color: 'white',
-                          padding: '0.5rem 1rem',
-                          borderRadius: '0.375rem',
-                          border: 'none',
-                          fontSize: '0.875rem',
-                          fontWeight: '500',
-                          cursor: 'pointer'
-                        }}
-                        onMouseOver={(e) => {
-                          e.currentTarget.style.backgroundColor = '#d97706';
-                        }}
-                        onMouseOut={(e) => {
-                          e.currentTarget.style.backgroundColor = '#f59e0b';
-                        }}
-                      >
-                        Switch to Base
-                      </button>
-                    </div>
-                  )}
                 </div>
 
                 {hasUserMinted ? (
@@ -515,7 +421,7 @@ const MintPage = () => {
                 {!hasUserMinted && (
                   <button
                     onClick={mintNFT}
-                    disabled={isMinting || !eventData?.isActive || !isCorrectNetwork}
+                    disabled={isMinting || isWritePending || !eventData?.isActive || !isCorrectNetwork}
                     style={{
                       width: '100%',
                       display: 'inline-flex',
@@ -528,38 +434,38 @@ const MintPage = () => {
                       border: '2px solid',
                       transition: 'all 0.1s ease',
                       fontSize: '1rem',
-                      cursor: isMinting || !eventData?.isActive || !isCorrectNetwork ? 'not-allowed' : 'pointer',
-                      color: isMinting || !eventData?.isActive || !isCorrectNetwork ? '#3b82f6' : 'black',
-                      borderColor: isMinting || !eventData?.isActive || !isCorrectNetwork ? '#93c5fd' : 'black',
-                      backgroundColor: isMinting || !eventData?.isActive || !isCorrectNetwork ? 'transparent' : '#60a5fa',
-                      boxShadow: isMinting || !eventData?.isActive || !isCorrectNetwork ? 'none' : '0 4px 0 0 rgba(0,0,0,1)'
+                      cursor: isMinting || isWritePending || !eventData?.isActive || !isCorrectNetwork ? 'not-allowed' : 'pointer',
+                      color: isMinting || isWritePending || !eventData?.isActive || !isCorrectNetwork ? '#3b82f6' : 'black',
+                      borderColor: isMinting || isWritePending || !eventData?.isActive || !isCorrectNetwork ? '#93c5fd' : 'black',
+                      backgroundColor: isMinting || isWritePending || !eventData?.isActive || !isCorrectNetwork ? 'transparent' : '#60a5fa',
+                      boxShadow: isMinting || isWritePending || !eventData?.isActive || !isCorrectNetwork ? 'none' : '0 4px 0 0 rgba(0,0,0,1)'
                     }}
                     onMouseOver={(e) => {
-                      if (!isMinting && eventData?.isActive && isCorrectNetwork) {
+                      if (!isMinting && !isWritePending && eventData?.isActive && isCorrectNetwork) {
                         e.currentTarget.style.backgroundColor = '#3b82f6';
                         e.currentTarget.style.boxShadow = '0 6px 0 0 rgba(0,0,0,1)';
                       }
                     }}
                     onMouseOut={(e) => {
-                      if (!isMinting && eventData?.isActive && isCorrectNetwork) {
+                      if (!isMinting && !isWritePending && eventData?.isActive && isCorrectNetwork) {
                         e.currentTarget.style.backgroundColor = '#60a5fa';
                         e.currentTarget.style.boxShadow = '0 4px 0 0 rgba(0,0,0,1)';
                       }
                     }}
                     onMouseDown={(e) => {
-                      if (!isMinting && eventData?.isActive && isCorrectNetwork) {
+                      if (!isMinting && !isWritePending && eventData?.isActive && isCorrectNetwork) {
                         e.currentTarget.style.boxShadow = '0 2px 0 0 rgba(0,0,0,1)';
                         e.currentTarget.style.transform = 'translateY(2px)';
                       }
                     }}
                     onMouseUp={(e) => {
-                      if (!isMinting && eventData?.isActive && isCorrectNetwork) {
+                      if (!isMinting && !isWritePending && eventData?.isActive && isCorrectNetwork) {
                         e.currentTarget.style.boxShadow = '0 4px 0 0 rgba(0,0,0,1)';
                         e.currentTarget.style.transform = 'translateY(0)';
                       }
                     }}
                   >
-                    {isMinting ? 'Minting...' : 'Mint NFT'}
+                    {isMinting || isWritePending ? 'Minting...' : 'Mint NFT'}
                   </button>
                 )}
 

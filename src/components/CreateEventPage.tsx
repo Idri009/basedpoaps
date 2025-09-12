@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useContract } from '../hooks/useContract';
+import { useAccount, useWriteContract } from 'wagmi';
 
 const CreateEventPage = () => {
   const navigate = useNavigate();
-  const { contractAddress, contractAbi, publicClient, getWalletClient, verifyContract, getContractName } = useContract();
-  const [account, setAccount] = useState<string>('');
-  const [isConnected, setIsConnected] = useState(false);
+  const { contractAddress, contractAbi, publicClient, verifyContract, getContractName } = useContract();
+  const { address: account, isConnected } = useAccount();
+  const { writeContract, isPending: isWritePending } = useWriteContract();
   const [isCreating, setIsCreating] = useState(false);
   const [status, setStatus] = useState('');
   const [, setContractOwner] = useState<string>('');
@@ -36,43 +37,9 @@ const CreateEventPage = () => {
     };
     
     loadContractOwner();
-  }, []);
+  }, [contractAddress, contractAbi, publicClient]);
 
-  const connectWallet = async () => {
-    try {
-      setStatus('Connecting to wallet...');
-      
-      if (typeof window.ethereum !== 'undefined') {
-        const existingAccounts = await window.ethereum.request({
-          method: 'eth_accounts',
-        });
-        
-        if (existingAccounts && existingAccounts.length > 0) {
-          setAccount(existingAccounts[0]);
-          setIsConnected(true);
-          setStatus('Wallet already connected!');
-          return;
-        }
-        
-        const accounts = await window.ethereum.request({
-          method: 'eth_requestAccounts',
-        });
-        
-        if (accounts && accounts.length > 0) {
-          setAccount(accounts[0]);
-          setIsConnected(true);
-          setStatus('Wallet connected successfully!');
-        } else {
-          setStatus('No accounts found. Please unlock your wallet.');
-        }
-      } else {
-        setStatus('Please install MetaMask or another Ethereum wallet extension.');
-      }
-    } catch (error: any) {
-      console.error('Error connecting wallet:', error);
-      setStatus(`Connection failed: ${error.message || 'Unknown error'}`);
-    }
-  };
+  // Wallet connection is now handled by AppKit
 
   const createEvent = async () => {
     if (!isConnected || !account) {
@@ -162,13 +129,6 @@ const CreateEventPage = () => {
         return;
       }
 
-      const walletClient = getWalletClient();
-      if (!walletClient) {
-        setStatus('Wallet client not available. Please check your wallet connection.');
-        setIsCreating(false);
-        return;
-      }
-
       // Format IPFS hash properly (add ipfs:// prefix if not present)
       const formattedIpfsHash = ipfsHash.startsWith('ipfs://') ? ipfsHash : `ipfs://${ipfsHash}`;
       
@@ -182,7 +142,7 @@ const CreateEventPage = () => {
         ipfsHash: formattedIpfsHash
       });
 
-      const hash = await walletClient.writeContract({
+      writeContract({
         address: contractAddress,
         abi: contractAbi,
         functionName: 'registerEvent',
@@ -195,22 +155,26 @@ const CreateEventPage = () => {
           BigInt(attendeeCount), // Ensure attendeeCount is BigInt
           formattedIpfsHash
         ],
-        account: account as `0x${string}`
+        value: 0n
+      }, {
+        onSuccess: (hash) => {
+          setStatus(`✅ Event "${eventCode}" created successfully! Transaction: ${hash}`);
+          
+          // Reset form
+          setEventCode('');
+          setEventName('');
+          setLocation('');
+          setHostName('');
+          setAttendeeCount(0);
+          setIpfsHash('');
+        },
+        onError: (error) => {
+          console.error('Error creating event:', error);
+          setStatus(`❌ Transaction failed: ${error.message || 'Unknown error'}`);
+        }
       });
 
-      setStatus('Transaction submitted! Waiting for confirmation...');
-
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      
-      if (receipt.status === 'success') {
-        setStatus('✅ Event created successfully! You can now mint NFTs for this event.');
-        // Navigate to mint page after successful creation
-        setTimeout(() => {
-          navigate(`/mint/${eventCode}`);
-        }, 2000);
-      } else {
-        setStatus('❌ Transaction failed. Please try again.');
-      }
+      // Transaction handling is now done in the writeContract callbacks above
     } catch (error: any) {
       console.error('Error creating event:', error);
       if (error.message?.includes('Event already registered')) {
@@ -334,43 +298,7 @@ const CreateEventPage = () => {
               <p style={{ color: '#6b7280', marginBottom: '1rem' }}>
                 Connect your wallet to create an event
               </p>
-              <button
-                onClick={connectWallet}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  padding: '12px 24px',
-                  borderRadius: '8px',
-                  fontWeight: '500',
-                  border: '2px solid black',
-                  transition: 'all 0.1s ease',
-                  fontSize: '1rem',
-                  cursor: 'pointer',
-                  color: 'black',
-                  backgroundColor: '#60a5fa',
-                  boxShadow: '0 4px 0 0 rgba(0,0,0,1)'
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.backgroundColor = '#3b82f6';
-                  e.currentTarget.style.boxShadow = '0 6px 0 0 rgba(0,0,0,1)';
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.backgroundColor = '#60a5fa';
-                  e.currentTarget.style.boxShadow = '0 4px 0 0 rgba(0,0,0,1)';
-                }}
-                onMouseDown={(e) => {
-                  e.currentTarget.style.boxShadow = '0 2px 0 0 rgba(0,0,0,1)';
-                  e.currentTarget.style.transform = 'translateY(2px)';
-                }}
-                onMouseUp={(e) => {
-                  e.currentTarget.style.boxShadow = '0 4px 0 0 rgba(0,0,0,1)';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }}
-              >
-                Connect Wallet
-              </button>
+              <appkit-button />
             </div>
           ) : (
             <div>
@@ -381,7 +309,7 @@ const CreateEventPage = () => {
                 marginBottom: '2rem'
               }}>
                 <p style={{ fontSize: '0.875rem', color: '#166534' }}>
-                  <strong>Connected:</strong> {account.slice(0, 6)}...{account.slice(-4)}
+                  <strong>Connected:</strong> {account ? `${account.slice(0, 6)}...${account.slice(-4)}` : 'Unknown'}
                 </p>
               </div>
 
@@ -547,7 +475,7 @@ const CreateEventPage = () => {
                   }
                 }}
               >
-                {isCreating ? 'Creating Event...' : 'Create Event'}
+                {isCreating || isWritePending ? 'Creating Event...' : 'Create Event'}
               </button>
             </div>
           )}
